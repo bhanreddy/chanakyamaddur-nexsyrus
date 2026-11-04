@@ -43,6 +43,7 @@ export default function StaffFooter({ state, navigation }: any) {
         return () => { show.remove(); hide.remove(); };
     }, []);
     const { width, fontScale } = useWindowDimensions();
+    const [barWidth, setBarWidth] = useState<number | null>(null);
     const barHeight = STAFF_TAB_BAR_HEIGHT + Math.max(0, fontScale - 1) * 24;
     const { staffId, isViewingAsAdmin, viewAsName, userId: viewAsUserId, actorUserId } = useEffectiveStaffId();
 
@@ -68,7 +69,7 @@ export default function StaffFooter({ state, navigation }: any) {
 
     // Calculate tab width
     const totalTabs = visibleRoutes.length;
-    const tabWidth = Math.min(width - theme.spacing.xl * 2, 900) / (totalTabs || 1); // Avoid div by zero
+    const tabWidth = (barWidth ?? Math.min(width - theme.spacing.xl * 2 - insets.left - insets.right, 900)) / (totalTabs || 1);
 
     const indicatorPosition = useSharedValue(0);
 
@@ -93,8 +94,8 @@ export default function StaffFooter({ state, navigation }: any) {
         container: {
             position: 'absolute',
             bottom: theme.spacing.xl + insets.bottom,
-            left: theme.spacing.xl,
-            right: theme.spacing.xl,
+            left: theme.spacing.xl + insets.left,
+            right: theme.spacing.xl + insets.right,
             alignItems: 'center',
         },
         barWrapper: {
@@ -152,14 +153,16 @@ export default function StaffFooter({ state, navigation }: any) {
             letterSpacing: 0.3,
             marginTop: 2,
         },
-    }), [theme, barHeight, insets.bottom]);
+    }), [theme, barHeight, insets.bottom, insets.left, insets.right]);
 
     // Safe to bail out now that every hook above has run unconditionally.
     if (!isFooterVisible || keyboardVisible) return null;
 
     return (
         <View style={styles.container}>
-            <View style={styles.barWrapper}>
+            <View style={styles.barWrapper} onLayout={({ nativeEvent: { layout } }) => {
+                if (layout.width > 0) setBarWidth(layout.width);
+            }}>
                 <BlurView
                     intensity={Platform.OS === 'ios' ? 80 : 30}
                     tint={isDark ? 'dark' : 'light'}

@@ -1263,7 +1263,7 @@ const HomeScreen = () => {
 
   const inchargeLabel = useMemo(() => {
     const teacher = student?.current_enrollment?.class_teacher?.trim();
-    if (!teacher) return t('studentHome.studentFallback');
+    if (!teacher) return null;
     return `${t('studentHome.incharge', 'Incharge')} · ${teacher}`;
   }, [student, t]);
 
@@ -1277,9 +1277,9 @@ const HomeScreen = () => {
 
   return (
     <HomeSvgContext.Provider value={svgMod}>
-      <ScreenLayout>
-        <StatusBar style={isDark ? 'light' : 'dark'} />
-        <TourTarget id="screen.home.overview"><StudentHeader /></TourTarget>
+      <ScreenLayout style={{ backgroundColor: SCHOOL_CONFIG.theme.ribbonGradient[0] }}>
+        <StatusBar style="light" />
+        <TourTarget id="screen.home.overview"><StudentHeader continuous /></TourTarget>
 
         <TourTarget id="screen.home.workspace" native><TourScrollView
           showsVerticalScrollIndicator={false}
@@ -1294,7 +1294,7 @@ const HomeScreen = () => {
           {refreshing && <View style={S.loaderRow}><LogoLoader size={28} /></View>}
 
           {/* ── HERO ── */}
-          <View style={[S.hero, { paddingTop: 6, backgroundColor: '#15245C' }]}>
+          <View style={[S.hero, { backgroundColor: P.bg }]}>
             <View
               style={[
                 S.heroOuter,

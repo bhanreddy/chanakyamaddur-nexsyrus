@@ -170,62 +170,6 @@ const BannerBackground = React.memo(function BannerBackground({
   );
 });
 
-/* ------------------------------------------------------------------ */
-/* Decorative sparkles                                                 */
-/* ------------------------------------------------------------------ */
-
-const SPARKLE_PATH =
-  'M12 2 C12.6 7 13 9.4 22 12 C13 14.6 12.6 17 12 22 C11.4 17 11 14.6 2 12 C11 9.4 11.4 7 12 2 Z';
-
-function Sparkle({
-  size,
-  opacity,
-  left,
-  top,
-}: {
-  size: number;
-  opacity: number;
-  left: number;
-  top: number;
-}) {
-  return (
-    <View
-      pointerEvents="none"
-      style={{ position: 'absolute', left, top, opacity }}
-    >
-      <Svg width={size} height={size} viewBox="0 0 24 24">
-        <Path d={SPARKLE_PATH} fill="#FFFFFF" />
-      </Svg>
-    </View>
-  );
-}
-
-function HeaderSparkles({ top }: { top: number }) {
-  const { width } = useWindowDimensions();
-
-  const sparks = [
-    { left: 28, top: top + 10, size: 10, opacity: 0.85 },
-    { left: width * 0.42, top: top + 18, size: 7, opacity: 0.6 },
-    { left: width - 118, top: top + 8, size: 8, opacity: 0.7 },
-    { left: width - 48, top: top + 52, size: 9, opacity: 0.55 },
-    { left: 72, top: top + 58, size: 6, opacity: 0.45 },
-  ];
-
-  return (
-    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-      {sparks.map((s, i) => (
-        <Sparkle
-          key={i}
-          size={s.size}
-          opacity={s.opacity}
-          left={s.left}
-          top={s.top}
-        />
-      ))}
-    </View>
-  );
-}
-
 const SCHOOL_NAME_MAX_LINES = 2;
 
 function measureWordWidth(
@@ -552,8 +496,6 @@ function MobileHeaderRibbon() {
             height={bannerHeight}
           />
         ) : null}
-
-        <HeaderSparkles top={insets.top} />
 
         <View
           style={[
