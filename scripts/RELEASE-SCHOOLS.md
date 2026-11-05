@@ -65,6 +65,36 @@ before releasing. SSD overlays take precedence over source assets during this ch
 
 ## Run
 
+Two separate entry files select the workflow:
+
+- `scripts/github-push.cjs`: school overlays, commit and GitHub push only.
+- `scripts/github-eas-release.cjs`: school overlays, dependency install, typecheck,
+  GitHub push, clean Android prebuild and EAS production AAB submission.
+
+Both use the existing shared/account configuration files. Examples from the frontend:
+
+```bash
+# GitHub only
+node scripts/github-push.cjs --account nexsyrus --execute
+
+# GitHub + EAS
+node scripts/github-eas-release.cjs --account nexsyrus --execute
+```
+
+Use `--account nexsyrus1` or `--account bhan_reddy` for another account, and
+`--schools ghs,slate` to narrow a batch. Omit `--execute` to preview. Both files
+support `--config` and `--resume`. Resume through the same workflow file:
+
+```bash
+node scripts/github-push.cjs --resume "/absolute/path/to/git-only-run" --execute
+node scripts/github-eas-release.cjs --resume "/absolute/path/to/build-run" --execute
+```
+
+Each file rejects resuming the other workflow. The full release file also rejects
+`--git-only`. The older `release-schools.cjs` remains the shared engine for existing
+commands. All `push:*` npm shortcuts use `github-push.cjs`; all `release:*` shortcuts
+use `github-eas-release.cjs`.
+
 For a Git-only batch under `bhan_reddy`:
 
 ```bash
@@ -83,6 +113,16 @@ npm run push:nexsyrus1
 
 # Apply school files, commit and push; no Expo or EAS commands
 npm run push:nexsyrus1 -- --execute
+```
+
+For the `nexsyrus` schools (GHS, Global, Samskruthe, Slate, and VMS), use:
+
+```bash
+# Preview
+npm run push:nexsyrus
+
+# Apply school files, commit and push; no Expo or EAS commands
+npm run push:nexsyrus -- --execute
 ```
 
 This uses the existing school/account mapping and preserves repository history.
@@ -220,6 +260,9 @@ interactive terminal; manual groups require a terminal whenever login must chang
    optional `google-services.json` replace their counterparts. Shared files absent
    from the SSD remain in the master copy. Every SSD constant overrides the matching
    master constant, so keep those school-scoped copies current too.
+   Shared runtime exports belong outside `src/constants/` (for example,
+   `src/config/adminCoreQuickActions.ts`), so an older school catalogue cannot
+   erase a new export needed during startup.
 3. Read `.env` or, for VMS, `env`. SSD environment files must contain public Expo
    values only. The production profile wins on conflicting values. The resolved
    public values go into both a private workspace `.env` and the selected EAS
@@ -229,7 +272,11 @@ interactive terminal; manual groups require a terminal whenever login must chang
    Files only present in the destination repo are removed from the new commit.
    Changes are committed and pushed normally; there is no force push. A concurrent
    remote change makes Git reject the push.
-5. Install with `npm ci`, verify project access, push, then run the workspace's local
+5. Install with `npm ci`, generate Expo's ignored type declarations and run
+   `tsc --noEmit` against the final school source using
+   `node scripts/check-release-types.cjs`. Missing exports or other type errors
+   stop the run before push or build submission. Verify project access, push,
+   then run the workspace's local
    `expo prebuild --platform android --clean --no-install`. Prebuild changing source
    files stops the run for inspection rather than uploading different source from
    the pushed commit.

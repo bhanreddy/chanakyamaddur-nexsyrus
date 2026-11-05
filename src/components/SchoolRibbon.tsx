@@ -1,3 +1,5 @@
+import { FlatSurfaceContext, useFlatSurface } from '../contexts/SurfaceAppearanceContext';
+import { useSurfaceStyleMap } from '../theme/surfaceStyles';
 import { StatusBar } from 'expo-status-bar';
 import { usePathname } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -467,6 +469,7 @@ const marqueeStyles = StyleSheet.create({
 /* ------------------------------------------------------------------ */
 
 function MobileHeaderRibbon() {
+  const headerStyles = useSurfaceStyleMap(baseHeaderStyles);
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const [bannerHeight, setBannerHeight] = useState(0);
@@ -530,7 +533,7 @@ function MobileHeaderRibbon() {
   );
 }
 
-const headerStyles = StyleSheet.create({
+const baseHeaderStyles = StyleSheet.create({
   wrapper: {
     position: 'absolute',
     top: 0,
@@ -618,23 +621,26 @@ const headerStyles = StyleSheet.create({
 /* ------------------------------------------------------------------ */
 
 export default function SchoolRibbon() {
+  const pathname = usePathname() || '';
+  const inheritedFlat = useFlatSurface();
+  const flat = inheritedFlat || pathname === '/library' || pathname.startsWith('/library/');
   const { width } = useWindowDimensions();
   const isDesktopWeb =
     Platform.OS === 'web' && width >= WEB_DESKTOP_RIBBON_MIN_WIDTH;
 
   if (isDesktopWeb) {
     return (
-      <SafeAreaView
+      <FlatSurfaceContext.Provider value={flat}><SafeAreaView
         style={shellStyles.safeTop}
         edges={['top']}
         accessibilityRole="header"
       >
         <StaticLetterheadRibbon />
-      </SafeAreaView>
+      </SafeAreaView></FlatSurfaceContext.Provider>
     );
   }
 
-  return <MobileHeaderRibbon />;
+  return <FlatSurfaceContext.Provider value={flat}><MobileHeaderRibbon /></FlatSurfaceContext.Provider>;
 }
 
 const shellStyles = StyleSheet.create({
@@ -698,6 +704,7 @@ function shouldUseFullLetterhead(_pathname: string): boolean {
 }
 
 function StaticLetterheadRibbon() {
+  const styles = useSurfaceStyleMap(baseLetterheadStyles);
   const { t } = useTranslation();
   const { width } = useWindowDimensions();
   const pathname = usePathname() || '';
@@ -852,7 +859,7 @@ function StaticLetterheadRibbon() {
   );
 }
 
-const styles = StyleSheet.create({
+const baseLetterheadStyles = StyleSheet.create({
   column: {
     backgroundColor: 'transparent',
     paddingHorizontal: 12,

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 'use strict';
+/* global Buffer, __dirname */
 
 // No external dependencies. All commands use argument arrays, never a shell.
 const fs = require('node:fs');
@@ -294,22 +295,29 @@ function options(argv) {
   assert(!(out['git-only'] && out['retry-school']), '--retry-school is unavailable in Git-only mode');
   return out;
 }
-async function main(argv = process.argv.slice(2)) {
+async function main(argv = process.argv.slice(2), { requiredMode, entrypoint = 'release-schools.cjs' } = {}) {
   const opt = options(argv);
+  assert(!requiredMode || ['git-only', 'build'].includes(requiredMode), 'Invalid required release mode');
+  assert(requiredMode !== 'build' || !opt['git-only'], 'The GitHub + EAS script always runs the full workflow; use github-push.cjs for GitHub only');
+  if (requiredMode === 'git-only') opt['git-only'] = true;
   if (opt.help) {
-    console.log('Usage: node scripts/release-schools.cjs [--config FILE] [--account GROUP] [--schools ghs,slate] [--git-only] [--execute]\n' +
+    console.log(`Usage: node scripts/${entrypoint} [--config FILE] [--account GROUP] [--schools ghs,slate] ${requiredMode ? '' : '[--git-only] '}[--execute]\n` +
       'Default: validate and print plan only.\n' +
-      'Git-only: prepare, commit and push school files; skip npm install, Expo authentication, prebuild and EAS builds.\n' +
+      (requiredMode === 'build'
+        ? 'Full workflow: school overlays, install, typecheck, GitHub push, clean Android prebuild and production EAS upload.\n'
+        : 'Git-only: prepare, commit and push school files; skip npm install, Expo authentication, prebuild and EAS builds.\n') +
       'Resume: --resume /absolute/run-directory --execute\n' +
-      'After verifying an uncertain EAS submission was NOT accepted: --resume DIR --retry-school KEY --execute');
+      (requiredMode === 'git-only' ? '' : 'After verifying an uncertain EAS submission was NOT accepted: --resume DIR --retry-school KEY --execute'));
     return;
   }
   let config; let schools; let state; let root;
-  let mode = opt['git-only'] ? 'git-only' : 'build';
+  let mode = requiredMode || (opt['git-only'] ? 'git-only' : 'build');
   if (opt.resume) {
     assert(!opt.config && !opt.schools && !opt.account, 'Resume uses the original frozen configuration and selection; omit --config, --schools and --account');
     root = path.resolve(opt.resume);
     state = json(path.join(root, 'state.json'));
+    assert(!requiredMode || (state.mode || 'build') === requiredMode,
+      `This script requires a ${requiredMode} run; the saved run uses ${state.mode || 'build'}. Use the matching script to resume it.`);
     assert(!opt['git-only'] || state.mode === 'git-only', 'Cannot change an existing build run to Git-only mode; start a new Git-only run');
     mode = state.mode || 'build';
     config = state.config; schools = state.schools;
@@ -393,6 +401,9 @@ async function main(argv = process.argv.slice(2)) {
       if (progress.phase === 'prepared') {
         if (!gitOnly) {
           command('npm', ['ci', '--no-audit', '--no-fund'], { cwd: work, env: authEnv });
+          // Validate the final school overlay, not just the shared source.
+          // Metro can bundle missing named exports that crash only at startup.
+          command(process.execPath, [path.join(work, 'scripts/check-release-types.cjs')], { cwd: work, env: authEnv });
           // Check access to the existing project before pushing or consuming build credits.
           command(easBin, ['project:info'], { cwd: work, env: authEnv });
         }

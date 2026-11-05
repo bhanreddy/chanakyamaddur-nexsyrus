@@ -11,6 +11,8 @@ import Animated, {
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../hooks/useTheme';
+import { useFlatSurface } from '../contexts/SurfaceAppearanceContext';
+import { NO_DEPTH } from '../theme/surfaceStyles';
 import { useEffectiveStaffId } from '../hooks/useEffectiveStaffId';
 
 
@@ -22,19 +24,24 @@ export function staffTabBarReserve(spacing: { xl: number; lg?: number }) {
   return STAFF_TAB_BAR_HEIGHT + Math.max(0, PixelRatio.getFontScale() - 1) * 24 + spacing.xl + (spacing.lg ?? 16) + 12;
 }
 
-// Map route names to icons and labels
-const TAB_CONFIG: Record<string, { icon: string; iconFilled: string; label: string }> = {
-    'dashboard': { icon: 'grid-outline', iconFilled: 'grid', label: 'Home' },
-    'manage-students': { icon: 'people-outline', iconFilled: 'people', label: 'Attendance' },
-    'timetable': { icon: 'calendar-outline', iconFilled: 'calendar', label: 'Timetable' },
-    'results': { icon: 'school-outline', iconFilled: 'school', label: 'Results' },
-};
+export interface StaffFooterTab {
+    name: string;
+    icon: string;
+    iconFilled: string;
+    label: string;
+}
+const STAFF_TABS: readonly StaffFooterTab[] = [
+    { name: 'dashboard', icon: 'grid-outline', iconFilled: 'grid', label: 'Home' },
+    { name: 'manage-students', icon: 'people-outline', iconFilled: 'people', label: 'Attendance' },
+    { name: 'timetable', icon: 'calendar-outline', iconFilled: 'calendar', label: 'Timetable' },
+    { name: 'results', icon: 'school-outline', iconFilled: 'school', label: 'Results' },
+];
 
-// Define the desired order of tabs
-const ORDERED_TABS = ['dashboard', 'manage-students', 'timetable', 'results'];
-
-export default function StaffFooter({ state, navigation }: any) {
+export default function StaffFooter({ state, navigation, tabs = STAFF_TABS, preserveStaffContext = true }: {
+    state: any; navigation: any; tabs?: readonly StaffFooterTab[]; preserveStaffContext?: boolean;
+}) {
     const { theme, isDark } = useTheme();
+    const flat = useFlatSurface();
     const insets = useSafeAreaInsets();
     const [keyboardVisible, setKeyboardVisible] = useState(false);
     useEffect(() => {
@@ -48,9 +55,10 @@ export default function StaffFooter({ state, navigation }: any) {
     const { staffId, isViewingAsAdmin, viewAsName, userId: viewAsUserId, actorUserId } = useEffectiveStaffId();
 
     // Filter and sort routes to only show the main 4 tabs
+    const orderedTabs = tabs.map((tab) => tab.name);
     const visibleRoutes = state.routes
-        .filter((route: any) => ORDERED_TABS.includes(route.name))
-        .sort((a: any, b: any) => ORDERED_TABS.indexOf(a.name) - ORDERED_TABS.indexOf(b.name));
+        .filter((route: any) => orderedTabs.includes(route.name))
+        .sort((a: any, b: any) => orderedTabs.indexOf(a.name) - orderedTabs.indexOf(b.name));
 
     // Calculate active index relative to visible routes
     const currentRouteName = state.routes[state.index].name;
@@ -103,9 +111,9 @@ export default function StaffFooter({ state, navigation }: any) {
             width: '100%',
             height: barHeight,
             maxWidth: 900,
-            borderRadius: theme.shape.borderRadiusFull,
+            borderRadius: flat ? 16 : theme.shape.borderRadiusFull,
             overflow: 'hidden',
-            ...theme.shadows.md,
+            ...(flat ? NO_DEPTH : theme.shadows.md),
         },
         barContent: {
             flexDirection: 'row',
@@ -114,7 +122,7 @@ export default function StaffFooter({ state, navigation }: any) {
             alignItems: 'center',
             paddingHorizontal: 0,
             borderWidth: 1,
-            borderRadius: theme.shape.borderRadiusFull,
+            borderRadius: flat ? 16 : theme.shape.borderRadiusFull,
         },
         activeIndicatorContainer: {
             position: 'absolute',
@@ -133,6 +141,7 @@ export default function StaffFooter({ state, navigation }: any) {
             shadowOpacity: 0.4,
             shadowRadius: 6,
             elevation: 4,
+            ...(flat ? NO_DEPTH : {}),
         },
         tabItem: {
             flex: 1,
@@ -153,7 +162,7 @@ export default function StaffFooter({ state, navigation }: any) {
             letterSpacing: 0.3,
             marginTop: 2,
         },
-    }), [theme, barHeight, insets.bottom, insets.left, insets.right]);
+    }), [theme, flat, barHeight, insets.bottom, insets.left, insets.right]);
 
     // Safe to bail out now that every hook above has run unconditionally.
     if (!isFooterVisible || keyboardVisible) return null;
@@ -163,13 +172,13 @@ export default function StaffFooter({ state, navigation }: any) {
             <View style={styles.barWrapper} onLayout={({ nativeEvent: { layout } }) => {
                 if (layout.width > 0) setBarWidth(layout.width);
             }}>
-                <BlurView
+                {!flat && <BlurView
                     intensity={Platform.OS === 'ios' ? 80 : 30}
                     tint={isDark ? 'dark' : 'light'}
                     style={StyleSheet.absoluteFill}
-                />
+                />}
                 <LinearGradient
-                    colors={isDark
+                    colors={flat ? [theme.colors.card, theme.colors.card] : isDark
                         ? ['rgba(30, 41, 59, 0.7)', 'rgba(15, 23, 42, 0.8)']
                         : ['rgba(255, 255, 255, 0.8)', 'rgba(241, 245, 249, 0.9)']}
                     start={{ x: 0, y: 0 }}
@@ -178,7 +187,7 @@ export default function StaffFooter({ state, navigation }: any) {
                 >
                     <Animated.View style={[styles.activeIndicatorContainer, indicatorStyle]}>
                         <LinearGradient
-                            colors={[theme.colors.primary, theme.colors.primaryLight]}
+                            colors={[theme.colors.primary, flat ? theme.colors.primary : theme.colors.primaryLight]}
                             start={{ x: 0, y: 0 }}
                             end={{ x: 1, y: 0 }}
                             style={styles.activeIndicator}
@@ -186,7 +195,7 @@ export default function StaffFooter({ state, navigation }: any) {
                     </Animated.View>
 
                     {visibleRoutes.map((route: any) => {
-                        const config = TAB_CONFIG[route.name] || { icon: 'ellipse', label: 'Tab' };
+                        const config = tabs.find((tab) => tab.name === route.name)!;
                         const isFocused = currentRouteName === route.name;
 
                         const onPress = () => {
@@ -197,7 +206,7 @@ export default function StaffFooter({ state, navigation }: any) {
                             });
 
                             if (!isFocused && !event.defaultPrevented) {
-                                navigation.navigate(route.name, isViewingAsAdmin
+                                navigation.navigate(route.name, preserveStaffContext && isViewingAsAdmin
                                   ? { ...(route.params || {}), staffId, viewAsName, viewAsUserId, viewAsActorId: actorUserId }
                                   : route.params);
                             }
@@ -206,6 +215,9 @@ export default function StaffFooter({ state, navigation }: any) {
                         return (
                             <Pressable
                                 key={route.key}
+                                accessibilityRole="tab"
+                                accessibilityLabel={config.label}
+                                accessibilityState={{ selected: isFocused }}
                                 onPress={onPress}
                                 style={[styles.tabItem, Platform.OS === 'web' && { cursor: 'pointer' }]}
                             >

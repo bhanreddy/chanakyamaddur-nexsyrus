@@ -1,4 +1,5 @@
 'use strict';
+/* global Buffer, __dirname */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -7,6 +8,8 @@ const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 const { parseEnv, profileFor, childEnv, parseBuilds, loadConfig, inspectSchool } = require('./release-schools.cjs');
 const runner = path.join(__dirname, 'release-schools.cjs');
+const githubRunner = path.join(__dirname, 'github-push.cjs');
+const fullRunner = path.join(__dirname, 'github-eas-release.cjs');
 
 function write(file, content, executable = false) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -36,7 +39,8 @@ function fixture(t) {
   write(path.join(source, 'eas.json'), eas);
   write(path.join(source, 'package.json'), { name: 'test', version: '1.0.0' });
   write(path.join(source, 'package-lock.json'), {});
-  write(path.join(source, '.gitignore'), 'node_modules/\n.env\n/android/\n');
+  write(path.join(source, '.gitignore'), 'node_modules/\n.env\n/android/\n.expo/\nexpo-env.d.ts\n');
+  write(path.join(source, 'scripts/check-release-types.cjs'), fs.readFileSync(path.join(__dirname, 'check-release-types.cjs'), 'utf8'));
   write(path.join(source, 'google-services.json'), { client: [{ client_info: { android_client_info: { package_name: 'com.test.school' } } }] });
   write(path.join(source, 'common.txt'), 'original');
   write(path.join(source, 'obsolete.txt'), 'remove in next release');
@@ -73,6 +77,8 @@ const fs=require('node:fs'),path=require('node:path');
 if(process.argv[2]==='--version'){console.log('10.0');process.exit(0);}
 const p=path.join(process.cwd(),'node_modules/.bin/expo');fs.mkdirSync(path.dirname(p),{recursive:true});
 fs.writeFileSync(p,'#!/usr/bin/env node\\nprocess.exit(0);\\n');fs.chmodSync(p,0o755);
+const tsc=path.join(process.cwd(),'node_modules/.bin/tsc');
+fs.writeFileSync(tsc,'#!/usr/bin/env node\\nconst fs=require("node:fs");fs.appendFileSync(process.env.MOCK_TYPECHECK_CALLS,process.cwd()+"\\\\n");process.exit(process.env.MOCK_FAIL_TYPECHECK==="1"?1:0);\\n');fs.chmodSync(tsc,0o755);
 `, true);
   write(path.join(source, 'node_modules', '.bin', 'eas'), `#!/usr/bin/env node
 const fs=require('node:fs');
@@ -86,7 +92,7 @@ else if(cmd==='build'){
 }else{console.error('Unexpected EAS command');process.exit(1);}
 `, true);
   const env = { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}`, MOCK_REMOTE: remote,
-    RELEASE_TEST_TOKEN: 'good-token', MOCK_BUILD_CALLS: path.join(root, 'build-calls'),
+    RELEASE_TEST_TOKEN: 'good-token', MOCK_BUILD_CALLS: path.join(root, 'build-calls'), MOCK_TYPECHECK_CALLS: path.join(root, 'typecheck-calls'),
     GIT_AUTHOR_NAME: 'Fixture', GIT_AUTHOR_EMAIL: 'fixture@example.invalid', GIT_COMMITTER_NAME: 'Fixture', GIT_COMMITTER_EMAIL: 'fixture@example.invalid' };
   return { root, source, remote, configFile, env, config };
 }
@@ -143,7 +149,7 @@ test('full release preserves source, pushes overlay, submits once, resumes witho
   const accountConfig = path.join(f.root, 'accounts', 'group.json');
   write(accountConfig, { extends: '../config.json', account: 'group' });
   const before = run('git', ['-C', f.source, 'status', '--porcelain']);
-  const result = spawnSync(process.execPath, [runner, '--config', accountConfig, '--execute'], { env: f.env, encoding: 'utf8' });
+  const result = spawnSync(process.execPath, [fullRunner, '--config', accountConfig, '--execute'], { env: f.env, encoding: 'utf8' });
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
   const dir = path.join(f.root, 'runs', fs.readdirSync(path.join(f.root, 'runs'))[0]);
   const state = JSON.parse(fs.readFileSync(path.join(dir, 'state.json')));
@@ -151,6 +157,9 @@ test('full release preserves source, pushes overlay, submits once, resumes witho
   assert.equal(narrowedResume.status, 1);
   assert.match(narrowedResume.stderr, /original frozen configuration and selection/);
   assert.equal(state.progress.test.phase, 'submitted');
+  const wrongResume = spawnSync(process.execPath, [githubRunner, '--resume', dir, '--execute'], { env: f.env, encoding: 'utf8' });
+  assert.equal(wrongResume.status, 1);
+  assert.match(wrongResume.stderr, /requires a git-only run/);
   assert.equal(run('git', ['--git-dir', f.remote, 'show', 'main:common.txt']), 'dirty latest code');
   assert.equal(run('git', ['--git-dir', f.remote, 'show', 'main:new-module.txt']), 'untracked feature');
   assert.equal(run('git', ['--git-dir', f.remote, 'show', 'main:modules/custom/android/NativeModule.kt']), 'native module code');
@@ -165,8 +174,20 @@ test('full release preserves source, pushes overlay, submits once, resumes witho
   const calls = fs.readFileSync(f.env.MOCK_BUILD_CALLS, 'utf8').trim().split('\n').map(JSON.parse);
   assert.ok(calls[0].args.includes('--no-wait'));
   assert.equal(calls[0].envSchool, '7');
-  run(process.execPath, [runner, '--resume', dir, '--execute'], { env: f.env });
+  assert.match(fs.readFileSync(f.env.MOCK_TYPECHECK_CALLS, 'utf8'), /work[/\\]test/);
+  run(process.execPath, [fullRunner, '--resume', dir, '--execute'], { env: f.env });
   assert.equal(fs.readFileSync(f.env.MOCK_BUILD_CALLS, 'utf8').trim().split('\n').length, 1);
+});
+test('a school-overlay typecheck failure blocks push and build', t => {
+  const f = fixture(t);
+  const original = run('git', ['--git-dir', f.remote, 'rev-parse', 'main']);
+  const result = spawnSync(process.execPath, [runner, '--config', f.configFile, '--execute'], {
+    env: { ...f.env, MOCK_FAIL_TYPECHECK: '1' }, encoding: 'utf8',
+  });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /tsc --noEmit failed/);
+  assert.equal(run('git', ['--git-dir', f.remote, 'rev-parse', 'main']), original);
+  assert.equal(fs.existsSync(f.env.MOCK_BUILD_CALLS), false);
 });
 test('uncertain upload requires explicit retry after reconciliation', t => {
   const f = fixture(t);
@@ -301,7 +322,7 @@ test('Git-only pushes school files without EAS, npm or prebuild and resume remai
   fs.rmSync(path.join(f.source, 'node_modules'), { recursive: true, force: true });
   // Any attempted npm invocation fails; Expo/EAS executables do not exist.
   write(path.join(f.root, 'bin', 'npm'), '#!/usr/bin/env node\nprocess.exit(99);\n', true);
-  const result = spawnSync(process.execPath, [runner, '--config', f.configFile, '--account', 'group', '--git-only', '--execute'],
+  const result = spawnSync(process.execPath, [githubRunner, '--config', f.configFile, '--account', 'group', '--execute'],
     { env: { ...f.env, RELEASE_TEST_TOKEN: '' }, encoding: 'utf8' });
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
   assert.match(result.stdout, /All selected schools pushed/);
@@ -318,7 +339,10 @@ test('Git-only pushes school files without EAS, npm or prebuild and resume remai
   assert.equal(fs.existsSync(f.env.MOCK_BUILD_CALLS), false);
   assert.equal(fs.existsSync(path.join(dir, 'test.build.json')), false);
   const commit = run('git', ['--git-dir', f.remote, 'rev-parse', 'main']);
-  const resumed = run(process.execPath, [runner, '--resume', dir, '--execute'], { env: f.env });
+  const wrongResume = spawnSync(process.execPath, [fullRunner, '--resume', dir, '--execute'], { env: f.env, encoding: 'utf8' });
+  assert.equal(wrongResume.status, 1);
+  assert.match(wrongResume.stderr, /requires a build run/);
+  const resumed = run(process.execPath, [githubRunner, '--resume', dir, '--execute'], { env: f.env });
   assert.match(resumed, /already pushed/);
   assert.equal(run('git', ['--git-dir', f.remote, 'rev-parse', 'main']), commit);
   assert.equal(fs.existsSync(f.env.MOCK_BUILD_CALLS), false);
@@ -332,5 +356,13 @@ test('a frozen build run cannot be resumed as Git-only', t => {
   const refused = spawnSync(process.execPath, [runner, '--resume', dir, '--git-only', '--execute'], { env: f.env, encoding: 'utf8' });
   assert.equal(refused.status, 1);
   assert.match(refused.stderr, /Cannot change an existing build run to Git-only/);
+  assert.equal(fs.existsSync(f.env.MOCK_BUILD_CALLS), false);
+});
+test('full release entry point rejects Git-only flag before touching source or remote', t => {
+  const f = fixture(t);
+  const result = spawnSync(process.execPath, [fullRunner, '--config', f.configFile, '--git-only', '--execute'], { env: f.env, encoding: 'utf8' });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /always runs the full workflow/);
+  assert.equal(fs.existsSync(path.join(f.root, 'runs')), false);
   assert.equal(fs.existsSync(f.env.MOCK_BUILD_CALLS), false);
 });
